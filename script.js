@@ -8,10 +8,10 @@ const UUID_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 const UUID_WRITE = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; 
 
 // 스무딩 & 필터 설정
-const SMOOTHING = 0.1; 
-const FILTER_SIZE = 5;      
+const SMOOTHING = 0.08; 
+const FILTER_SIZE = 7;      
 const MIN_CHANGE = 1;     
-const SEND_INTERVAL = 20;   
+const SEND_INTERVAL = 60;   
 
 // --- [변수] ---
 let handLandmarker = undefined;
