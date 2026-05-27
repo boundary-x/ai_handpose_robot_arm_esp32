@@ -3,14 +3,15 @@ import {
   FilesetResolver
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
 
-// --- [설정] 하드웨어 및 통신 설정 (ESP32 통신 규격으로 수정) ---
+// --- [설정] 하드웨어 및 통신 설정 ---
 const UUID_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 const UUID_WRITE = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; 
 
 // 스무딩 & 필터 설정
 const SMOOTHING = 0.1; 
-const FILTER_SIZE = 3; 
-const MIN_CHANGE = 1.5; 
+const FILTER_SIZE = 5;      
+const MIN_CHANGE = 2.5;     
+const SEND_INTERVAL = 50;   
 
 // --- [변수] ---
 let handLandmarker = undefined;
@@ -22,6 +23,7 @@ let results = undefined;
 let bluetoothDevice, writeCharacteristic;
 let isConnected = false;
 let isSendingData = false;
+let lastSentTimeMs = 0;     
 
 let targetAngles = { b: 90, s: 90, e: 90, g: 0 };
 let currentAngles = { b: 90, s: 90, e: 90 }; 
@@ -38,7 +40,6 @@ const disconnectBtn = document.getElementById("disconnect-btn");
 const uiBars = { b: document.getElementById("bar-base"), s: document.getElementById("bar-shoulder"), e: document.getElementById("bar-elbow") };
 const uiVals = { b: document.getElementById("val-base"), s: document.getElementById("val-shoulder"), e: document.getElementById("val-elbow"), g: document.getElementById("val-gripper") };
 
-// [NEW] 매핑 설정 DOM 요소 가져오기
 const configUI = {
     b: { min: document.getElementById("min-base"), max: document.getElementById("max-base"), rev: document.getElementById("rev-base") },
     s: { min: document.getElementById("min-shoulder"), max: document.getElementById("max-shoulder"), rev: document.getElementById("rev-shoulder") },
@@ -93,20 +94,14 @@ async function predictWebcam() {
 
 // --- [4] 각도 계산 (UI 설정값 적용) ---
 function calculateRobotAngles(lm) {
-    // UI에서 현재 설정값 읽어오기
-    // 체크박스가 켜져 있으면(Reverse), Min과 Max를 서로 바꿔서 매핑함
-    
-    // 1. Base (좌우) : 입력 x (0~1)
     let bMin = parseInt(configUI.b.min.value) || 0;
     let bMax = parseInt(configUI.b.max.value) || 180;
-    // 반전 체크 시: 입력0 -> Max, 입력1 -> Min
     let bOutMin = configUI.b.rev.checked ? bMax : bMin;
     let bOutMax = configUI.b.rev.checked ? bMin : bMax;
     
     let x = 1 - lm[0].x; 
     let baseRaw = map(x, 0, 1, bOutMin, bOutMax);
 
-    // 2. Shoulder (거리) : 입력 size (0.05~0.25)
     let sMin = parseInt(configUI.s.min.value) || 20;
     let sMax = parseInt(configUI.s.max.value) || 160;
     let sOutMin = configUI.s.rev.checked ? sMax : sMin;
@@ -115,7 +110,6 @@ function calculateRobotAngles(lm) {
     let size = getDistance(lm[0], lm[9]);
     let shoulderRaw = map(size, 0.05, 0.25, sOutMin, sOutMax);
 
-    // 3. Elbow (상하) : 입력 y (0~1)
     let eMin = parseInt(configUI.e.min.value) || 20;
     let eMax = parseInt(configUI.e.max.value) || 160;
     let eOutMin = configUI.e.rev.checked ? eMax : eMin;
@@ -124,7 +118,6 @@ function calculateRobotAngles(lm) {
     let y = lm[0].y;
     let elbowRaw = map(y, 0, 1, eOutMin, eOutMax);
 
-    // 4. 이동 평균 및 Gripper
     let baseAvg = getMovingAverage(angleQueue.b, baseRaw);
     let shoulderAvg = getMovingAverage(angleQueue.s, shoulderRaw);
     let elbowAvg = getMovingAverage(angleQueue.e, elbowRaw);
@@ -132,7 +125,6 @@ function calculateRobotAngles(lm) {
     let pinchDist = getDistance(lm[4], lm[8]);
     let gripState = (pinchDist < 0.05) ? 0 : 1; 
 
-    // 최종 목표값
     targetAngles.b = constrain(baseAvg, 0, 180);
     targetAngles.s = constrain(shoulderAvg, 0, 180);
     targetAngles.e = constrain(elbowAvg, 0, 180);
@@ -175,6 +167,9 @@ function updateUI() {
 async function sendPacket() {
     if (!isConnected || !writeCharacteristic || isSendingData) return;
 
+    let currentTimeMs = performance.now();
+    if (currentTimeMs - lastSentTimeMs < SEND_INTERVAL) return;
+
     let b = Math.round(currentAngles.b);
     let s = Math.round(currentAngles.s);
     let e = Math.round(currentAngles.e);
@@ -194,7 +189,9 @@ async function sendPacket() {
         isSendingData = true;
         const encoder = new TextEncoder();
         await writeCharacteristic.writeValue(encoder.encode(packet + "\n"));
+        
         lastSentAngles = { b, s, e, g };
+        lastSentTimeMs = performance.now(); 
     } catch (err) { 
         console.error("데이터 전송 오류:", err); 
     } finally { 
