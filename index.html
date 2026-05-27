@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>바운더리엑스 AI 핸드포즈 로봇팔 컨트롤러</title>
+  
+  <link rel="icon" href="https://raw.githubusercontent.com/boundary-x/ai_teachable_machine/refs/heads/main/Favicon.png"/> 
+  <link rel="X-icon" href="https://raw.githubusercontent.com/boundary-x/ai_teachable_machine/refs/heads/main/Favicon.png"/> 
+  
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+  <link rel="stylesheet" type="text/css" href="style.css">
+
+  <script type="module" src="script.js"></script>
+</head>
+
+<body>
+  <header>
+    <div class="title">
+      <img src="https://raw.githubusercontent.com/boundary-x/ai_voice_recognition/refs/heads/main/boundaryx_logo.png" alt="Logo">
+      AI 핸드포즈 <span class="white-badge">로봇팔 컨트롤러</span>
+    </div>
+    <div class="header-right">
+        <span id="model-status" class="status-indicator loading">AI 모델 로딩 중...</span>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar">
+      
+      <div class="panel info-panel">
+        <h3>📘 사용 가이드</h3>
+        <ul class="manual-list">
+          <li><strong>🖐 제어 방법 (아바타 모드)</strong>
+            <ul class="sub-list">
+                <li><b>좌우(Base):</b> 손을 화면 좌우로 이동</li>
+                <li><b>거리(Shoulder):</b> 손을 카메라 앞뒤로 (원근)</li>
+                <li><b>상하(Elbow):</b> 손을 위아래로 이동 (높이)</li>
+                <li><b>집게(Gripper):</b> 엄지-검지 꼬집기 👌</li>
+            </ul>
+          </li>
+          <li class="trim-guide">
+            <strong>🎛 설정 팁</strong>
+            <p>로봇팔이 반대로 움직이면 <b>[반전]</b>을 체크하세요.<br>각도 범위(숫자)를 조절해 안전하게 제한할 수 있습니다.</p>
+          </li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>📡 기기 연결</h3>
+        <div id="bt-status" class="status-box">연결 대기 중</div>
+        <button id="connect-btn" class="btn-primary">기기 찾기</button>
+        <button id="disconnect-btn" class="btn-secondary hidden">연결 해제</button>
+      </div>
+
+      <div class="panel">
+        <h3>🤖 관절 각도 (Real-time)</h3>
+        
+        <div class="gauge-row">
+            <span>Base (좌우)</span> <span id="val-base">90°</span>
+        </div>
+        <div class="gauge-bar"><div id="bar-base" style="width: 50%"></div></div>
+
+        <div class="gauge-row">
+            <span>Shoulder (거리)</span> <span id="val-shoulder">90°</span>
+        </div>
+        <div class="gauge-bar"><div id="bar-shoulder" style="width: 50%"></div></div>
+
+        <div class="gauge-row">
+            <span>Elbow (상하)</span> <span id="val-elbow">90°</span>
+        </div>
+        <div class="gauge-bar"><div id="bar-elbow" style="width: 50%"></div></div>
+
+        <div class="gauge-row">
+            <span>Gripper</span> <span id="val-gripper" class="badge-open">OPEN</span>
+        </div>
+      </div>
+      
+      <div class="panel mapping-panel">
+        <h3>🎛 동작 범위 & 방향 설정</h3>
+        
+        <div class="control-group">
+            <div class="label-row">
+                <label>Base (좌우)</label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="rev-base" checked> 반전
+                </label>
+            </div>
+            <div class="input-row">
+                <input type="number" id="min-base" value="0" min="0" max="180">
+                <span>~</span>
+                <input type="number" id="max-base" value="180" min="0" max="180">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <label>Shoulder (거리)</label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="rev-shoulder" checked> 반전
+                </label>
+            </div>
+            <div class="input-row">
+                <input type="number" id="min-shoulder" value="20" min="0" max="180">
+                <span>~</span>
+                <input type="number" id="max-shoulder" value="160" min="0" max="180">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="label-row">
+                <label>Elbow (상하)</label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="rev-elbow" checked> 반전
+                </label>
+            </div>
+            <div class="input-row">
+                <input type="number" id="min-elbow" value="20" min="0" max="180">
+                <span>~</span>
+                <input type="number" id="max-elbow" value="160" min="0" max="180">
+            </div>
+        </div>
+      </div>
+
+      <div class="debug-panel">
+        <p>전송 패킷:</p>
+        <code id="packet-log">Waiting...</code>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="canvas-wrapper">
+        <video id="webcam" autoplay playsinline></video>
+        
+        <div class="overlay-guide-container">
+            <div class="guide-text top-left">↕ Height: Elbow</div>
+            <div class="guide-text bottom-left">✋ Dist: Shoulder</div>
+            <div class="guide-text bottom-right">↔ Rotate: Base</div>
+            <div class="guide-text center">✊ Pinch: Grab</div>
+            <div class="center-crosshair"></div>
+        </div>
+
+        <canvas id="output_canvas"></canvas>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
