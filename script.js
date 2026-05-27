@@ -3,9 +3,9 @@ import {
   FilesetResolver
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
 
-// --- [설정] 하드웨어 및 통신 설정 ---
+// --- [설정] 하드웨어 및 통신 설정 (ESP32 통신 규격으로 수정) ---
 const UUID_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-const UUID_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; 
+const UUID_WRITE = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; 
 
 // 스무딩 & 필터 설정
 const SMOOTHING = 0.1; 
@@ -19,7 +19,7 @@ let canvas, ctx;
 let lastVideoTime = -1;
 let results = undefined;
 
-let bluetoothDevice, rxCharacteristic;
+let bluetoothDevice, writeCharacteristic;
 let isConnected = false;
 let isSendingData = false;
 
@@ -173,7 +173,7 @@ function updateUI() {
 
 // --- [6] 통신 ---
 async function sendPacket() {
-    if (!isConnected || !rxCharacteristic || isSendingData) return;
+    if (!isConnected || !writeCharacteristic || isSendingData) return;
 
     let b = Math.round(currentAngles.b);
     let s = Math.round(currentAngles.s);
@@ -193,25 +193,51 @@ async function sendPacket() {
     try {
         isSendingData = true;
         const encoder = new TextEncoder();
-        await rxCharacteristic.writeValue(encoder.encode(packet + "\r\n"));
+        await writeCharacteristic.writeValue(encoder.encode(packet + "\n"));
         lastSentAngles = { b, s, e, g };
-    } catch (err) { } finally { isSendingData = false; }
+    } catch (err) { 
+        console.error("데이터 전송 오류:", err); 
+    } finally { 
+        isSendingData = false; 
+    }
 }
 
 connectBtn.addEventListener('click', async () => {
   try {
-    bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: "BBC micro:bit" }], optionalServices: [UUID_SERVICE] });
+    bluetoothDevice = await navigator.bluetooth.requestDevice({ 
+        filters: [{ namePrefix: "ESP" }, { namePrefix: "MPY" }], 
+        optionalServices: [UUID_SERVICE] 
+    });
+    
     bluetoothDevice.addEventListener('gattserverdisconnected', onDisc);
     const server = await bluetoothDevice.gatt.connect();
     const service = await server.getPrimaryService(UUID_SERVICE);
-    rxCharacteristic = await service.getCharacteristic(UUID_RX);
-    isConnected = true; statusBt.innerText = "연결됨: " + bluetoothDevice.name; statusBt.classList.add("status-connected");
-    connectBtn.classList.add("hidden"); disconnectBtn.classList.remove("hidden");
-  } catch (error) { alert("연결 실패: " + error); }
+    
+    writeCharacteristic = await service.getCharacteristic(UUID_WRITE);
+    
+    isConnected = true; 
+    statusBt.innerText = "연결됨: " + bluetoothDevice.name; 
+    statusBt.classList.add("status-connected");
+    connectBtn.classList.add("hidden"); 
+    disconnectBtn.classList.remove("hidden");
+  } catch (error) { 
+      alert("연결 실패: " + error); 
+  }
 });
-function onDisc() { isConnected = false; statusBt.innerText = "연결 해제됨"; statusBt.classList.remove("status-connected"); connectBtn.classList.remove("hidden"); disconnectBtn.classList.add("hidden"); }
-disconnectBtn.addEventListener('click', () => { if(bluetoothDevice && bluetoothDevice.gatt.connected) { bluetoothDevice.gatt.disconnect(); } });
+
+function onDisc() { 
+    isConnected = false; 
+    writeCharacteristic = null;
+    statusBt.innerText = "연결 해제됨"; 
+    statusBt.classList.remove("status-connected"); 
+    connectBtn.classList.remove("hidden"); 
+    disconnectBtn.classList.add("hidden"); 
+}
+
+disconnectBtn.addEventListener('click', () => { 
+    if(bluetoothDevice && bluetoothDevice.gatt.connected) { 
+        bluetoothDevice.gatt.disconnect(); 
+    } 
+});
 
 createHandLandmarker();
-
-
